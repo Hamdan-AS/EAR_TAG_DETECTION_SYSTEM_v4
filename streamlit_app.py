@@ -132,7 +132,7 @@ def get_largest_id_by_pixels(crop):
     return None
 
 # --- Main UI ---
-st.title("Large ID Extractor")
+st.title("Cattle Ear tag detector")
 
 uploaded_file = st.file_uploader("Upload Tag Image", type=["jpg", "jpeg", "png"])
 
