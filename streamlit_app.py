@@ -10,116 +10,116 @@ import os
 # --- Configuration ---
 st.set_page_config(page_title="🐄 Cattle Eartag detector", layout="wide")
 
+# Mapping common OCR errors for cattle tags
 MISHAP_MAP = {
     "|": "1", "I": "1", "l": "1", "[": "1", "]": "1", "(": "1", ")": "1",
     "O": "0", "o": "0", "S": "5", "s": "5", "B": "8", "G": "6"
 }
 
-def load_models():
-    """Load YOLO detector and RapidOCR recognizer."""
+@st.cache_resource
+def get_models():
+    """Load and cache models."""
     base_path = os.path.dirname(__file__)
     model_path = os.path.join(base_path, 'cow_eartag_yolov8n_100ep_clean_best.pt')
     if not os.path.exists(model_path):
-        st.error("Model file 'cow_eartag_yolov8n_100ep_clean_best.pt' not found.")
+        st.error(f"Model file '{model_path}' not found.")
         st.stop()
     return YOLO(model_path), RapidOCR()
 
-@st.cache_resource
-def get_detector_recognizer():
-    """Cache the models to avoid reloading on every rerun."""
-    return load_models()
-
-detector, recognizer = get_detector_recognizer()
+detector, recognizer = get_models()
 
 def clean_and_format(raw_text):
     """Applies mishap mapping and keeps only digits."""
     text = raw_text.strip()
     for char, replacement in MISHAP_MAP.items():
         text = text.replace(char, replacement)
-    # Remove any remaining non-digit characters
     return re.sub(r'\D', '', text)
 
-def get_tag_id(crop):
-    """Extracts text from the crop and cleans it."""
-    result, _ = recognizer(crop)
+def process_tag_ocr(crop):
+    """Uses OpenCV to prep the crop and RapidOCR to find the ID."""
+    # Convert RGB to BGR for OpenCV processing
+    bgr_crop = cv2.cvtColor(crop, cv2.COLOR_RGB2BGR)
+    gray = cv2.cvtColor(bgr_crop, cv2.COLOR_BGR2GRAY)
+    
+    # Enhance contrast using CLAHE
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
+    
+    # Run OCR
+    result, _ = recognizer(enhanced)
     if not result:
         return None
 
-    candidates = []
+    # Logic: Find the text block with the highest confidence or largest area
+    best_text = ""
+    max_area = 0
+    
     for line in result:
-        text = line[1]
-        cleaned = clean_and_format(text)
-        if cleaned:
-            candidates.append(cleaned)
+        box, text, conf = line
+        # Calculate area of text box
+        coords = np.array(box)
+        rect = cv2.boundingRect(coords)
+        area = rect[2] * rect[3]
+        
+        if area > max_area:
+            max_area = area
+            best_text = text
 
-    # Join multiple lines if the ID is split
-    return "".join(candidates) if candidates else None
+    return clean_and_format(best_text)
 
 # --- Main UI ---
-st.title("Cattle Ear tag detector")
+st.title("🐄 Cattle Ear Tag Detector & OCR")
+st.markdown("This version detects **all** visible tags and highlights them using OpenCV.")
 
-uploaded_file = st.file_uploader("Upload Tag Image", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
-    # Load the image
+    # 1. Load Image
     image = Image.open(uploaded_file).convert("RGB")
     img_array = np.array(image)
+    viz_img = img_array.copy() # For OpenCV drawing
     
-    # Create a copy specifically for drawing OpenCV bounding boxes
-    annotated_img = img_array.copy()
-    
-    # Run detection
+    # 2. Run YOLO Detection
     results = detector(img_array, conf=0.4)
+    detections = results[0].boxes.xyxy.cpu().numpy()
     
-    st.subheader("Extracted IDs")
-    found_any = False
-    tag_crops = []
+    found_tags = []
 
-    # Process all detected boxes
-    if results and len(results) > 0:
-        for idx, box in enumerate(results[0].boxes.xyxy.cpu().numpy()):
-            x1, y1, x2, y2 = map(int, box)
+    # 3. Process each detection
+    for i, box in enumerate(detections):
+        x1, y1, x2, y2 = map(int, box)
+        
+        # Extract crop
+        crop = img_array[y1:y2, x1:x2]
+        if crop.size == 0:
+            continue
             
-            # --- OpenCV: Draw bounding boxes and labels on the main image ---
-            cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (0, 255, 0), 3)
-            cv2.putText(annotated_img, f"Tag {idx+1}", (x1, max(y1 - 10, 20)), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-            
-            # Crop the tag
-            tag_crop = img_array[y1:y2, x1:x2]
-            
-            if tag_crop.size > 0:
-                # OpenCV Pre-processing to improve dark-on-yellow contrast
-                gray = cv2.cvtColor(tag_crop, cv2.COLOR_RGB2GRAY)
-                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-                processed = clahe.apply(gray)
+        # Run OCR on the crop
+        tag_id = process_tag_ocr(crop)
+        display_id = tag_id if tag_id else "???"
+        
+        # 4. OpenCV Visualization
+        # Draw bounding box
+        cv2.rectangle(viz_img, (x1, y1), (x2, y2), (0, 255, 0), 3)
+        # Draw label background
+        label = f"ID: {display_id}"
+        cv2.putText(viz_img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+        
+        found_tags.append({"id": display_id, "crop": crop})
 
-                # Extract text using OCR
-                extracted_id = get_tag_id(processed)
-                
-                if extracted_id:
-                    st.markdown(f"**Tag {idx+1}:** `{extracted_id}`")
-                    tag_crops.append({
-                        'id': extracted_id,
-                        'crop': tag_crop,
-                        'idx': idx + 1
-                    })
-                    found_any = True
+    # 5. Display Results
+    st.subheader("Detection Result")
+    st.image(viz_img, caption="Processed Image with OpenCV Overlays")
 
-    # Display the annotated image with all detections
-    st.subheader("Detected Tags Overview")
-    st.image(annotated_img, caption="All detected ear tags highlighted")
+    if found_tags:
+        st.subheader("Individual Tag Details")
+        cols = st.columns(len(found_tags))
+        for idx, tag in enumerate(found_tags):
+            with cols[idx]:
+                st.image(tag['crop'], caption=f"Detected ID: {tag['id']}")
+                st.write(f"**Tag {idx+1}:** `{tag['id']}`")
+    else:
+        st.warning("No tags detected.")
 
-    # Display individual crops
-    if found_any:
-        st.subheader("Individual Tag Crops")
-        # Use Streamlit columns to display crops side-by-side (up to 4 across)
-        cols = st.columns(min(len(tag_crops), 4) if len(tag_crops) > 0 else 1)
-        for i, item in enumerate(tag_crops):
-            with cols[i % len(cols)]:
-                st.image(item['crop'], caption=f"Tag {item['idx']} - ID: {item['id']}")
-                
-    if not found_any:
-        st.warning("No IDs could be clearly extracted.")
 else:
-    st.info("Upload an image to begin")
+    st.info("Please upload an image of cattle to begin detection.")
