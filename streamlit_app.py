@@ -63,7 +63,7 @@ def get_bottom_id(crop):
 
 # --- Main UI ---
 st.title("🆔 Large ID Extractor Only")
-uploaded_file = st.file_uploader("Upload Tag Image", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("Upload Tag Image", type=["zip","jpg", "jpeg", "png"])
 
 if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
