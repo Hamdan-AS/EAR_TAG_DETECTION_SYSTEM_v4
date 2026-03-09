@@ -12,7 +12,7 @@ st.set_page_config(page_title="Cattle Eartag detector", layout="wide")
 
 # Mapping common OCR errors for cattle tags
 MISHAP_MAP = {
-    "|": "1", "I": "1", "l": "1", "[": "1", "]": "1", "(": "1", ")": "1",
+    "|": "1", "I": "1", "l": "1", "[": "1", "]": "1", "(", ")", "1": "1",
     "O": "0", "o": "0", "S": "5", "s": "5", "B": "8", "G": "6"
 }
 
@@ -50,20 +50,15 @@ def process_tag_ocr(crop):
     if not result:
         return None
     
-    # Merge all detected text blocks left-to-right
-    text_blocks = []
+    # Process all detected text blocks - no size filtering, no sorting by position
+    all_text = []
     for line in result:
         box, text, conf = line
-        # Get x-coordinate for sorting
-        x_coords = [pt[0] for pt in box]
-        x_min = min(x_coords)
-        text_blocks.append((x_min, text))
+        # No filtering by box size or text pixel area
+        all_text.append(text)
     
-    # Sort by x-coordinate (left-to-right)
-    text_blocks.sort(key=lambda x: x[0])
-    
-    # Merge all text
-    merged_text = "".join(text for _, text in text_blocks)
+    # Simple concatenation without left-to-right sorting
+    merged_text = "".join(all_text)
     
     return clean_and_format(merged_text)
 
@@ -85,7 +80,7 @@ if uploaded_file:
     
     found_tags = []
     
-    # 3. Process each detection
+    # 3. Process each detection - all boxes, no size selection
     for i, box in enumerate(detections):
         x1, y1, x2, y2 = map(int, box)
         
