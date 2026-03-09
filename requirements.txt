@@ -1,6 +1,7 @@
 streamlit
 ultralytics
-rapidocr_onnxruntime
+rapidocr-onnxruntime
+pi-heif
 opencv-python-headless
 pillow
 numpy
