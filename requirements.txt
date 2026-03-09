@@ -1,0 +1,6 @@
+streamlit
+ultralytics
+rapidocr_onnxruntime
+opencv-python-headless
+pillow
+numpy
