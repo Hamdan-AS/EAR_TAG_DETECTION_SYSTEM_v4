@@ -39,6 +39,57 @@ def clean_and_format(raw_text):
     # Remove any remaining non-digit characters
     return re.sub(r'\D', '', text)
 
+def get_largest_text_by_pixels(ocr_result):
+    """
+    Filters OCR results to only get the largest text block by pixel area.
+    Returns the text with the largest bounding box area.
+    """
+    if not ocr_result:
+        return None
+    
+    largest_text = None
+    largest_area = 0
+    
+    for line in ocr_result:
+        box = line[0]  # Format: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+        text = line[1]
+        
+        # Calculate bounding box area
+        x_coords = [p[0] for p in box]
+        y_coords = [p[1] for p in box]
+        width = max(x_coords) - min(x_coords)
+        height = max(y_coords) - min(y_coords)
+        area = width * height
+        
+        # Keep track of the largest text block
+        if area > largest_area:
+            largest_area = area
+            largest_text = text
+    
+    return largest_text if largest_text else None
+
+def get_largest_bbox(results):
+    """
+    Filter detection results to keep only the largest bounding box by pixel area.
+    Hardcoded to return single largest detection.
+    """
+    if not results or len(results) == 0:
+        return None
+    
+    largest_box = None
+    largest_area = 0
+    
+    for r in results:
+        for box in r.boxes.xyxy.cpu().numpy():
+            x1, y1, x2, y2 = map(int, box)
+            area = (x2 - x1) * (y2 - y1)
+            
+            if area > largest_area:
+                largest_area = area
+                largest_box = (x1, y1, x2, y2)
+    
+    return largest_box
+
 def get_bottom_id(crop):
     """Finds text in the bottom half of the crop and cleans it."""
     # RapidOCR returns: [ [ [box], text, confidence ], ... ]
@@ -66,8 +117,27 @@ def get_bottom_id(crop):
     # Join multiple lines if the ID is split, or return the longest numeric string
     return "".join(candidates) if candidates else None
 
+def get_largest_id_by_pixels(crop):
+    """
+    Extracts the largest text block by pixel area from the crop and cleans it.
+    Returns the ID of the largest number pixels in the dataset.
+    """
+    result, _ = recognizer(crop)
+    if not result:
+        return None
+    
+    # Get the largest text block by pixel area
+    largest_text = get_largest_text_by_pixels(result)
+    
+    if largest_text:
+        cleaned = clean_and_format(largest_text)
+        return cleaned if cleaned else None
+    
+    return None
+
 # --- Main UI ---
 st.title("Large ID Extractor")
+
 uploaded_file = st.file_uploader("Upload Tag Image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
@@ -82,42 +152,39 @@ if uploaded_file:
     # Run detection
     results = detector(img_array, conf=0.4)
     
+    # Get only the largest bounding box
+    largest_box = get_largest_bbox(results)
+    
     st.subheader("Extracted Large IDs")
     found_any = False
     tag_crops = []
 
-    for idx, r in enumerate(results):
-        for box_idx, box in enumerate(r.boxes.xyxy.cpu().numpy()):
-            x1, y1, x2, y2 = map(int, box)
-            
-            # Crop the tag
-            tag_crop = img_array[y1:y2, x1:x2]
-            if tag_crop.size == 0:
-                continue
-            
+    if largest_box:
+        x1, y1, x2, y2 = largest_box
+        
+        # Crop the tag
+        tag_crop = img_array[y1:y2, x1:x2]
+        if tag_crop.size > 0:
             # Pre-processing to improve dark-on-yellow contrast
             gray = cv2.cvtColor(tag_crop, cv2.COLOR_RGB2GRAY)
             clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
             processed = clahe.apply(gray)
 
-            # Extract only the bottom text
-            large_id = get_bottom_id(processed)
+            # Extract largest text by pixels
+            large_id = get_largest_id_by_pixels(processed)
             
             if large_id:
                 st.markdown(f"### `{large_id}`")
                 tag_crops.append({
                     'id': large_id,
                     'crop': tag_crop,
-                    'idx': len(tag_crops) + 1
+                    'idx': 1
                 })
                 found_any = True
     
     if found_any:
-        st.subheader("Tag Crops")
-        cols = st.columns(3)
-        for idx, tag_data in enumerate(tag_crops):
-            with cols[idx % 3]:
-                st.image(tag_data['crop'], caption=f"Tag {tag_data['idx']} - ID: {tag_data['id']}")
+        st.subheader("Tag Crop (Largest Detection)")
+        st.image(tag_crops[0]['crop'], caption=f"Largest Tag - ID: {tag_crops[0]['id']}")
     
     if not found_any:
         st.warning("No large IDs could be clearly extracted.")
