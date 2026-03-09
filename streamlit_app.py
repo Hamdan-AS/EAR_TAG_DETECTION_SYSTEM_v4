@@ -21,10 +21,10 @@ MISHAP_MAP = {
 @st.cache_resource
 def load_models():
     base_path = os.path.dirname(__file__)
-    model_path = os.path.join(base_path, 'best.pt')
+    model_path = os.path.join(base_path, 'cow_eartag_yolov8n_100ep_clean_best.pt')
     
     if not os.path.exists(model_path):
-        st.error(f"Error: 'best.pt' not found at {model_path}. Please ensure weights are in the root directory.")
+        st.error(f"Error: 'cow_eartag_yolov8n_100ep_clean_best.pt' not found at {model_path}. Please ensure weights are in the root directory.")
         st.stop()
         
     # Initialize YOLO and RapidOCR
