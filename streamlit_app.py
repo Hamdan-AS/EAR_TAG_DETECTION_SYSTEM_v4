@@ -8,43 +8,15 @@ import re
 import os
 
 # --- Configuration ---
-st.set_page_config(page_title="Large ID Extractor", layout="centered")
+st.set_page_config(page_title="Large ID Extractor", layout="wide")
 
 MISHAP_MAP = {
     "|": "1", "I": "1", "l": "1", "[": "1", "]": "1", "(": "1", ")": "1",
     "O": "0", "o": "0", "S": "5", "s": "5", "B": "8", "G": "6"
 }
 
-@st.cache_resource
-def get_bottom_id(tag_crop):
-    """
-    Analyzes text position within the tag.
-    Filters for text in the bottom 60% of the crop to isolate Large IDs.
-    """
-    result, _ = recognizer(tag_crop)
-    if not result:
-        return None
-
-    # FIX: Handle both Grayscale (2D) and Color (3D) shapes
-    height = tag_crop.shape[0] 
-    candidates = []
-
-    for line in result:
-        box, text, conf = line[0], line[1], line[2]
-        
-        # Calculate vertical center of the text block
-        # RapidOCR box: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
-        y_coords = [p[1] for p in box]
-        text_center_y = sum(y_coords) / len(y_coords)
-
-        # Geometric filter: Only process text in the lower half of the tag
-        if text_center_y > (height * 0.4):
-            cleaned = clean_and_format(text)
-            if cleaned:
-                candidates.append(cleaned)
-
-    return "".join(candidates) if candidates else None
 def load_models():
+    """Load YOLO detector and RapidOCR recognizer."""
     base_path = os.path.dirname(__file__)
     model_path = os.path.join(base_path, 'cow_eartag_yolov8n_100ep_clean_best.pt')
     if not os.path.exists(model_path):
@@ -52,7 +24,12 @@ def load_models():
         st.stop()
     return YOLO(model_path), RapidOCR()
 
-detector, recognizer = load_models()
+@st.cache_resource
+def get_detector_recognizer():
+    """Cache the models to avoid reloading on every rerun."""
+    return load_models()
+
+detector, recognizer = get_detector_recognizer()
 
 def clean_and_format(raw_text):
     """Applies mishap mapping and keeps only digits."""
@@ -69,7 +46,7 @@ def get_bottom_id(crop):
     if not result:
         return None
 
-    height, width, *_ = crop.shape
+    height = crop.shape[0]
     candidates = []
 
     for line in result:
@@ -90,38 +67,59 @@ def get_bottom_id(crop):
     return "".join(candidates) if candidates else None
 
 # --- Main UI ---
-st.title("🆔 Large ID Extractor Only")
+st.title("Large ID Extractor")
 uploaded_file = st.file_uploader("Upload Tag Image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
+    # Load the image
     image = Image.open(uploaded_file).convert("RGB")
     img_array = np.array(image)
     
-    # 1. Detection
+    # Display uploaded image
+    st.subheader("Uploaded Image")
+    st.image(image)
+    
+    # Run detection
     results = detector(img_array, conf=0.4)
     
     st.subheader("Extracted Large IDs")
     found_any = False
+    tag_crops = []
 
-    for r in results:
-        for box in r.boxes.xyxy.cpu().numpy():
+    for idx, r in enumerate(results):
+        for box_idx, box in enumerate(r.boxes.xyxy.cpu().numpy()):
             x1, y1, x2, y2 = map(int, box)
             
-            # 2. Crop the tag
+            # Crop the tag
             tag_crop = img_array[y1:y2, x1:x2]
-            if tag_crop.size == 0: continue
+            if tag_crop.size == 0:
+                continue
             
             # Pre-processing to improve dark-on-yellow contrast
             gray = cv2.cvtColor(tag_crop, cv2.COLOR_RGB2GRAY)
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
             processed = clahe.apply(gray)
 
-            # 3. Extract only the bottom text
+            # Extract only the bottom text
             large_id = get_bottom_id(processed)
             
             if large_id:
                 st.markdown(f"### `{large_id}`")
+                tag_crops.append({
+                    'id': large_id,
+                    'crop': tag_crop,
+                    'idx': len(tag_crops) + 1
+                })
                 found_any = True
+    
+    if found_any:
+        st.subheader("Tag Crops")
+        cols = st.columns(3)
+        for idx, tag_data in enumerate(tag_crops):
+            with cols[idx % 3]:
+                st.image(tag_data['crop'], caption=f"Tag {tag_data['idx']} - ID: {tag_data['id']}")
     
     if not found_any:
         st.warning("No large IDs could be clearly extracted.")
+else:
+    st.info("Upload an image to begin")
