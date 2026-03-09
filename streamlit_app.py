@@ -14,11 +14,11 @@ st.set_page_config(page_title="Cattle Eartag Detection", layout="wide")
 @st.cache_resource
 def load_models():
     base_path = os.path.dirname(__file__)
-    model_path = os.path.join(base_path, 'best.pt')
+    model_path = os.path.join(base_path, 'cow_eartag_yolov8n_100ep_clean_best.pt')
     
     # Simple check to ensure model exists
     if not os.path.exists(model_path):
-        st.error(f"Model file 'best.pt' not found in {base_path}")
+        st.error(f"Model file 'cow_eartag_yolov8n_100ep_clean_best.pt' not found in {base_path}")
         st.stop()
         
     return YOLO(model_path), RapidOCR()
