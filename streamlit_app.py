@@ -8,7 +8,7 @@ import re
 import os
 
 # --- Configuration ---
-st.set_page_config(page_title="Large ID Extractor", layout="wide")
+st.set_page_config(page_title="🐄 Cattle Eartag detector", layout="wide")
 
 MISHAP_MAP = {
     "|": "1", "I": "1", "l": "1", "[": "1", "]": "1", "(": "1", ")": "1",
@@ -69,10 +69,6 @@ def get_largest_text_by_pixels(ocr_result):
     return largest_text if largest_text else None
 
 def get_largest_bbox(results):
-    """
-    Filter detection results to keep only the largest bounding box by pixel area.
-    Hardcoded to return single largest detection.
-    """
     if not results or len(results) == 0:
         return None
     
