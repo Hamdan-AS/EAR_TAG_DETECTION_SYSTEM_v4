@@ -11,8 +11,8 @@ st.set_page_config(page_title="Ear Tag Detection & OCR", layout="wide")
 # --- Model Loading (Cached) ---
 @st.cache_resource
 def load_models():
-    # Load YOLOv8 model (ensure best.pt is in your repo root)
-    detector = YOLO('best.pt') 
+    # Load YOLOv8 model (ensure cow_eartag_yolov8n_100ep_clean_best.pt is in your repo root)
+    detector = YOLO('cow_eartag_yolov8n_100ep_clean_best.pt') 
     # Initialize RapidOCR
     recognizer = RapidOCR()
     return detector, recognizer
