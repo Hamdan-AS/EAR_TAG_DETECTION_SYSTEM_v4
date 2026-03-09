@@ -16,6 +16,34 @@ MISHAP_MAP = {
 }
 
 @st.cache_resource
+def get_bottom_id(tag_crop):
+    """
+    Analyzes text position within the tag.
+    Filters for text in the bottom 60% of the crop to isolate Large IDs.
+    """
+    result, _ = recognizer(tag_crop)
+    if not result:
+        return None
+
+    # FIX: Handle both Grayscale (2D) and Color (3D) shapes
+    height = tag_crop.shape[0] 
+    candidates = []
+
+    for line in result:
+        box, text, conf = line[0], line[1], line[2]
+        
+        # Calculate vertical center of the text block
+        # RapidOCR box: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+        y_coords = [p[1] for p in box]
+        text_center_y = sum(y_coords) / len(y_coords)
+
+        # Geometric filter: Only process text in the lower half of the tag
+        if text_center_y > (height * 0.4):
+            cleaned = clean_and_format(text)
+            if cleaned:
+                candidates.append(cleaned)
+
+    return "".join(candidates) if candidates else None
 def load_models():
     base_path = os.path.dirname(__file__)
     model_path = os.path.join(base_path, 'cow_eartag_yolov8n_100ep_clean_best.pt')
@@ -41,7 +69,7 @@ def get_bottom_id(crop):
     if not result:
         return None
 
-    height, _, _ = crop.shape
+    height, width, *_ = crop.shape
     candidates = []
 
     for line in result:
