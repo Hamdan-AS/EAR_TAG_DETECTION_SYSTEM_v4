@@ -8,7 +8,7 @@ import re
 import os
 
 # --- Configuration ---
-st.set_page_config(page_title="🐄 Cattle Eartag detector", layout="wide")
+st.set_page_config(page_title="Cattle Eartag detector", layout="wide")
 
 # Mapping common OCR errors for cattle tags
 MISHAP_MAP = {
@@ -49,27 +49,27 @@ def process_tag_ocr(crop):
     result, _ = recognizer(enhanced)
     if not result:
         return None
-
-    # Logic: Find the text block with the highest confidence or largest area
-    best_text = ""
-    max_area = 0
     
+    # Merge all detected text blocks left-to-right
+    text_blocks = []
     for line in result:
         box, text, conf = line
-        # Calculate area of text box
-        coords = np.array(box)
-        rect = cv2.boundingRect(coords)
-        area = rect[2] * rect[3]
-        
-        if area > max_area:
-            max_area = area
-            best_text = text
-
-    return clean_and_format(best_text)
+        # Get x-coordinate for sorting
+        x_coords = [pt[0] for pt in box]
+        x_min = min(x_coords)
+        text_blocks.append((x_min, text))
+    
+    # Sort by x-coordinate (left-to-right)
+    text_blocks.sort(key=lambda x: x[0])
+    
+    # Merge all text
+    merged_text = "".join(text for _, text in text_blocks)
+    
+    return clean_and_format(merged_text)
 
 # --- Main UI ---
-st.title("🐄 Cattle Ear Tag Detector & OCR")
-st.markdown("This version detects **all** visible tags and highlights them using OpenCV.")
+st.title("Cattle Ear Tag Detector & OCR")
+st.markdown("This version detects **all** visible tags and extracts ID numbers.")
 
 uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
 
@@ -77,14 +77,14 @@ if uploaded_file:
     # 1. Load Image
     image = Image.open(uploaded_file).convert("RGB")
     img_array = np.array(image)
-    viz_img = img_array.copy() # For OpenCV drawing
+    viz_img = img_array.copy()  # For OpenCV drawing
     
     # 2. Run YOLO Detection
     results = detector(img_array, conf=0.4)
     detections = results[0].boxes.xyxy.cpu().numpy()
     
     found_tags = []
-
+    
     # 3. Process each detection
     for i, box in enumerate(detections):
         x1, y1, x2, y2 = map(int, box)
@@ -106,11 +106,11 @@ if uploaded_file:
         cv2.putText(viz_img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
         
         found_tags.append({"id": display_id, "crop": crop})
-
+    
     # 5. Display Results
     st.subheader("Detection Result")
     st.image(viz_img, caption="Processed Image with OpenCV Overlays")
-
+    
     if found_tags:
         st.subheader("Individual Tag Details")
         cols = st.columns(len(found_tags))
@@ -120,6 +120,5 @@ if uploaded_file:
                 st.write(f"**Tag {idx+1}:** `{tag['id']}`")
     else:
         st.warning("No tags detected.")
-
 else:
     st.info("Please upload an image of cattle to begin detection.")
