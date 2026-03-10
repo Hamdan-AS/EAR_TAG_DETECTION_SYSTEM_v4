@@ -10,10 +10,11 @@ import os
 # --- Configuration ---
 st.set_page_config(page_title="Cattle Eartag detector", layout="wide")
 
-# Mapping common OCR errors for cattle tags
+# FIXED: Corrected syntax error (added colons and values)
 MISHAP_MAP = {
-    "|": "1", "I": "1", "l": "1", "[": "1", "]": "1", "(", ")", "1": "1",
-    "O": "0", "o": "0", "S": "5", "s": "5", "B": "8", "G": "6"
+    "|": "1", "I": "1", "l": "1", "[": "1", "]": "1", 
+    "(": "1", ")": "1", "0": "0", "O": "0", "o": "0", 
+    "S": "5", "s": "5", "B": "8", "G": "6"
 }
 
 @st.cache_resource
@@ -40,12 +41,15 @@ def process_tag_ocr(crop):
     Finds text in the bottom half of the crop and selects 
     the largest block by pixel area.
     """
+    # Convert RGB to BGR for OpenCV processing
     bgr_crop = cv2.cvtColor(crop, cv2.COLOR_RGB2BGR)
     gray = cv2.cvtColor(bgr_crop, cv2.COLOR_BGR2GRAY)
     
+    # Enhance contrast
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     enhanced = clahe.apply(gray)
     
+    # Run OCR
     result, _ = recognizer(enhanced)
     if not result:
         return None
@@ -57,8 +61,7 @@ def process_tag_ocr(crop):
     for line in result:
         box, text, conf = line
         
-        # 1. Calculate bounding box area and vertical center
-        # box format: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+        # Calculate vertical center and area
         y_coords = [p[1] for p in box]
         x_coords = [p[0] for p in box]
         
@@ -67,67 +70,55 @@ def process_tag_ocr(crop):
         height = max(y_coords) - min(y_coords)
         area = width * height
 
-        # 2. Heuristic: Only consider text in the bottom 60% of the tag
-        # This ignores the smaller dates/numbers printed at the top.
+        # HEURISTIC: Focus on bottom 60% and pick the largest text block
         if y_center > (crop_h * 0.4):
-            # 3. Keep the block with the largest area
             if area > max_area:
                 max_area = area
                 largest_text = text
 
     return clean_and_format(largest_text) if largest_text else None
+
 # --- Main UI ---
 st.title("Cattle Ear Tag Detector & OCR")
-st.markdown("This version detects **all** visible tags and extracts ID numbers.")
 
 uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
-    # 1. Load Image
     image = Image.open(uploaded_file).convert("RGB")
     img_array = np.array(image)
-    viz_img = img_array.copy()  # For OpenCV drawing
+    viz_img = img_array.copy()
     
-    # 2. Run YOLO Detection
     results = detector(img_array, conf=0.4)
     detections = results[0].boxes.xyxy.cpu().numpy()
     
     found_tags = []
     
-    # 3. Process each detection - all boxes, no size selection
     for i, box in enumerate(detections):
         x1, y1, x2, y2 = map(int, box)
-        
-        # Extract crop
         crop = img_array[y1:y2, x1:x2]
+        
         if crop.size == 0:
             continue
             
-        # Run OCR on the crop
         tag_id = process_tag_ocr(crop)
         display_id = tag_id if tag_id else "???"
         
-        # 4. OpenCV Visualization
-        # Draw bounding box
+        # Draw on main image
         cv2.rectangle(viz_img, (x1, y1), (x2, y2), (0, 255, 0), 3)
-        # Draw label background
-        label = f"ID: {display_id}"
-        cv2.putText(viz_img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+        cv2.putText(viz_img, f"ID: {display_id}", (x1, y1 - 10), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
         
         found_tags.append({"id": display_id, "crop": crop})
     
-    # 5. Display Results
     st.subheader("Detection Result")
-    st.image(viz_img, caption="Processed Image with OpenCV Overlays")
+    st.image(viz_img)
     
     if found_tags:
         st.subheader("Individual Tag Details")
         cols = st.columns(len(found_tags))
         for idx, tag in enumerate(found_tags):
             with cols[idx]:
-                st.image(tag['crop'], caption=f"Detected ID: {tag['id']}")
-                st.write(f"**Tag {idx+1}:** `{tag['id']}`")
+                st.image(tag['crop'])
+                st.write(f"**Detected ID:** `{tag['id']}`")
     else:
         st.warning("No tags detected.")
-else:
-    st.info("Please upload an image of cattle to begin detection.")
