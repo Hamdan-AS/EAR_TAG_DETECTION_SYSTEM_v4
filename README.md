@@ -51,20 +51,20 @@ By simply uploading a photo (including mobile formats), users can:
 ```code
 git clone https://github.com/Hamdan-AS/EAR_TAG_DETECTION_SYSTEM_v4.git
 cd EAR_TAG_DETECTION_SYSTEM_v4
-
+----
 ### 2. System Dependencies
 
 For OpenCV to function correctly in Linux/headless environments, install:
 ```code
 sudo apt-get update
 sudo apt-get install -y libgl1 libglib2.0-dev
-
+----
 ### 3. Python Environment
 
 It is recommended to use a virtual environment.
 ```code
 pip install -r requirements.txt
-
+---
 ###4.Launch the App
 ```code
 streamlit run streamlit_app.py
