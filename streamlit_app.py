@@ -10,6 +10,7 @@ import os
 # --- Configuration ---
 st.set_page_config(page_title="Cattle Eartag detector", layout="wide")
 
+# FIXED: Corrected syntax error by adding values for "(" and ")" 
 MISHAP_MAP = {
     "|": "1", "I": "1", "l": "1", "[": "1", "]": "1", "(": "1", ")": "1",
     "O": "0", "o": "0", "S": "5", "s": "5", "B": "8", "G": "6"
@@ -36,53 +37,46 @@ def clean_and_format(raw_text):
 
 def process_tag_ocr(crop):
     """
-    PATH B: Position-based filtering (bottom-50% only)
-    
-    Optimized for cattle tag format:
-    - Top 50%: Small date/batch text (date, lot #, etc) - IGNORED
-    - Bottom 50%: Large ID text (main identifier) - TARGET
-    
-    This ensures we never pick up date/metadata text, only the main ID.
+    Finds text in the bottom half of the crop and selects 
+    the largest block by pixel area to ensure we get the main ID.
     """
+    # 1. Image Pre-processing for better contrast
     bgr_crop = cv2.cvtColor(crop, cv2.COLOR_RGB2BGR)
     gray = cv2.cvtColor(bgr_crop, cv2.COLOR_BGR2GRAY)
-    enhanced = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
     
+    # 2. Run OCR
     result, _ = recognizer(enhanced)
-    if not result: 
+    if not result:
         return None
-    
-    text_blocks = []
+
     crop_h = enhanced.shape[0]
-    
-    # Extract OCR blocks from BOTTOM 50% only
+    largest_text = ""
+    max_area = 0
+
+    # 3. Logic: Find the Largest Block in the Bottom 60%
     for line in result:
         box, text, conf = line
-        yc = sum([p[1] for p in box]) / 4  # Vertical center
-        xc = sum([p[0] for p in box]) / 4  # Horizontal center
         
-        # STRICT: Only keep text in bottom 50% of crop
-        # (where the main ID is guaranteed to be)
-        if yc > (crop_h * 0.5):
-            text_blocks.append({
-                "text": text,
-                "xc": xc,
-                "conf": conf
-            })
-    
-    if not text_blocks:
-        return None
-    
-    # Sort left-to-right to maintain digit order
-    text_blocks.sort(key=lambda x: x["xc"])
-    
-    # Merge all blocks and clean
-    merged = "".join([b["text"] for b in text_blocks])
-    return clean_and_format(merged)
+        # Calculate vertical center and pixel area
+        y_coords = [p[1] for p in box]
+        x_coords = [p[0] for p in box]
+        
+        y_center = sum(y_coords) / 4
+        area = (max(x_coords) - min(x_coords)) * (max(y_coords) - min(y_coords))
+
+        # Only consider text in the bottom 60% of the tag (ignores top dates/batch numbers)
+        if y_center > (crop_h * 0.4):
+            if area > max_area:
+                max_area = area
+                largest_text = text
+
+    return clean_and_format(largest_text) if largest_text else None
 
 # --- Main UI ---
 st.title("Cattle Ear Tag Detector & OCR")
-st.markdown("**Path B:** Detecting single best tag with position-based (bottom-50%) ID extraction.")
+st.markdown("Detecting and extracting the **single best tag ID**.")
 
 uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
 
@@ -115,7 +109,8 @@ if uploaded_file:
         box = detections[best_idx]
         x1, y1, x2, y2 = map(int, box)
         
-        # --- Bounding Box: 15% Expansion ---
+        # --- BEST BOUNDING BOX OPTION: 15% Expansion ---
+        # We expand the box slightly to ensure characters on the edge (like '1') aren't cut off
         bw, bh = (x2 - x1), (y2 - y1)
         pad_w, pad_h = int(bw * 0.15), int(bh * 0.15)
         
@@ -146,7 +141,7 @@ if uploaded_file:
             col1, col2 = st.columns(2)
             
             with col1:
-                st.image(crop, caption="Detected Tag (Crop)")
+                st.image(crop, caption="Detected Tag")
             
             with col2:
                 st.metric("Tag ID", display_id)
