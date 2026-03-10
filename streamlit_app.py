@@ -36,32 +36,46 @@ def clean_and_format(raw_text):
     return re.sub(r'\D', '', text)
 
 def process_tag_ocr(crop):
-    """Uses OpenCV to prep the crop and RapidOCR to find the ID."""
-    # Convert RGB to BGR for OpenCV processing
+    """
+    Finds text in the bottom half of the crop and selects 
+    the largest block by pixel area.
+    """
     bgr_crop = cv2.cvtColor(crop, cv2.COLOR_RGB2BGR)
     gray = cv2.cvtColor(bgr_crop, cv2.COLOR_BGR2GRAY)
     
-    # Enhance contrast using CLAHE
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     enhanced = clahe.apply(gray)
     
-    # Run OCR
     result, _ = recognizer(enhanced)
     if not result:
         return None
-    
-    # Process all detected text blocks - no size filtering, no sorting by position
-    all_text = []
+
+    crop_h, crop_w = enhanced.shape[:2]
+    largest_text = ""
+    max_area = 0
+
     for line in result:
         box, text, conf = line
-        # No filtering by box size or text pixel area
-        all_text.append(text)
-    
-    # Simple concatenation without left-to-right sorting
-    merged_text = "".join(all_text)
-    
-    return clean_and_format(merged_text)
+        
+        # 1. Calculate bounding box area and vertical center
+        # box format: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+        y_coords = [p[1] for p in box]
+        x_coords = [p[0] for p in box]
+        
+        y_center = sum(y_coords) / 4
+        width = max(x_coords) - min(x_coords)
+        height = max(y_coords) - min(y_coords)
+        area = width * height
 
+        # 2. Heuristic: Only consider text in the bottom 60% of the tag
+        # This ignores the smaller dates/numbers printed at the top.
+        if y_center > (crop_h * 0.4):
+            # 3. Keep the block with the largest area
+            if area > max_area:
+                max_area = area
+                largest_text = text
+
+    return clean_and_format(largest_text) if largest_text else None
 # --- Main UI ---
 st.title("Cattle Ear Tag Detector & OCR")
 st.markdown("This version detects **all** visible tags and extracts ID numbers.")
