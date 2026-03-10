@@ -42,7 +42,6 @@ def process_tag_ocr(crop):
 
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
     enhanced = clahe.apply(gray)
-    enhanced = cv2.resize(enhanced, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
 
     result, _ = recognizer(enhanced)
 
