@@ -36,43 +36,42 @@ def clean_and_format(raw_text):
     return re.sub(r'\D', '', text)
 
 def process_tag_ocr(crop):
-    """
-    Finds text in the bottom half of the crop and selects 
-    the largest block by pixel area to ensure we get the main ID.
-    """
-    # 1. Image Pre-processing for better contrast
+
     bgr_crop = cv2.cvtColor(crop, cv2.COLOR_RGB2BGR)
     gray = cv2.cvtColor(bgr_crop, cv2.COLOR_BGR2GRAY)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
     enhanced = clahe.apply(gray)
-    
-    # 2. Run OCR
+
     result, _ = recognizer(enhanced)
+
     if not result:
         return None
 
-    crop_h = enhanced.shape[0]
-    largest_text = ""
-    max_area = 0
+    h = enhanced.shape[0]
+    candidates = []
 
-    # 3. Logic: Find the Largest Block in the Bottom 60%
     for line in result:
         box, text, conf = line
-        
-        # Calculate vertical center and pixel area
+
         y_coords = [p[1] for p in box]
-        x_coords = [p[0] for p in box]
-        
         y_center = sum(y_coords) / 4
-        area = (max(x_coords) - min(x_coords)) * (max(y_coords) - min(y_coords))
 
-        # Only consider text in the bottom 60% of the tag (ignores top dates/batch numbers)
-        if y_center > (crop_h * 0.4):
-            if area > max_area:
-                max_area = area
-                largest_text = text
+        # ONLY bottom 40% of tag
+        if y_center > h * 0.6:
 
-    return clean_and_format(largest_text) if largest_text else None
+            cleaned = clean_and_format(text)
+
+            if len(cleaned) >= 3:
+                candidates.append(cleaned)
+
+    if not candidates:
+        return None
+
+    # choose longest numeric sequence
+    best = max(candidates, key=len)
+
+    return best
 
 # --- Main UI ---
 st.title("Cattle Ear Tag Detector & OCR")
