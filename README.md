@@ -8,11 +8,8 @@ An automated computer vision solution for livestock management. This system leve
 
 - [Overview](#-overview)
 - [Key Features](#-key-features)
-- [Project Structure](#-project-structure)
 - [Installation](#️-installation)
-- [Model Details](#-model-details)
-- [Deployment](#-deployment-on-streamlit-cloud)
-- [Contributing](#-contributing)
+
 
 ---
 
@@ -48,23 +45,25 @@ By simply uploading a photo (including mobile formats), users can:
 
 ### 1. Clone the Repository
 
-```code
+```
 git clone https://github.com/Hamdan-AS/EAR_TAG_DETECTION_SYSTEM_v4.git
 cd EAR_TAG_DETECTION_SYSTEM_v4
-----
+```
+
 ### 2. System Dependencies
 
 For OpenCV to function correctly in Linux/headless environments, install:
-```code
+```
 sudo apt-get update
 sudo apt-get install -y libgl1 libglib2.0-dev
-----
+```
 ### 3. Python Environment
 
 It is recommended to use a virtual environment.
-```code
+```
 pip install -r requirements.txt
----
-###4.Launch the App
-```code
+```
+### 4.Launch the App
+```
 streamlit run streamlit_app.py
+```
