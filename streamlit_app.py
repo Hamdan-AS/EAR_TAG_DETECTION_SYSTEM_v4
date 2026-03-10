@@ -144,4 +144,3 @@ if uploaded_file:
             
             with col2:
                 st.metric("Tag ID", display_id)
-                st.info(f"(Largest of {len(detections)} detection(s) found)")
