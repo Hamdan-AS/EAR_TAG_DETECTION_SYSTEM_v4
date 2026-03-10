@@ -76,7 +76,7 @@ def process_tag_ocr(crop):
 
 # --- Main UI ---
 st.title("Cattle Ear Tag Detector & OCR")
-st.markdown("Extracting only the **Large Bottom ID** from all detected tags.")
+st.markdown("Detecting and extracting the **single best tag ID**.")
 
 uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
 
@@ -91,10 +91,22 @@ if uploaded_file:
     results = detector(img_array, conf=0.4)
     detections = results[0].boxes.xyxy.cpu().numpy()
     
-    found_tags = []
-    
-    # 3. Process each detection
-    for i, box in enumerate(detections):
+    if len(detections) == 0:
+        st.warning("No tags detected.")
+    else:
+        # 3. Find the LARGEST detection (by area)
+        best_idx = 0
+        max_area = 0
+        
+        for i, box in enumerate(detections):
+            x1, y1, x2, y2 = map(int, box)
+            area = (x2 - x1) * (y2 - y1)
+            if area > max_area:
+                max_area = area
+                best_idx = i
+        
+        # 4. Process ONLY the best detection
+        box = detections[best_idx]
         x1, y1, x2, y2 = map(int, box)
         
         # --- BEST BOUNDING BOX OPTION: 15% Expansion ---
@@ -110,29 +122,27 @@ if uploaded_file:
         crop = img_array[y1_pad:y2_pad, x1_pad:x2_pad]
         
         if crop.size == 0:
-            continue
+            st.warning("Could not extract tag crop.")
+        else:
+            # Run OCR on the expanded crop
+            tag_id = process_tag_ocr(crop)
+            display_id = tag_id if tag_id else "???"
             
-        # Run OCR on the expanded crop
-        tag_id = process_tag_ocr(crop)
-        display_id = tag_id if tag_id else "???"
-        
-        # 4. OpenCV Visualization
-        cv2.rectangle(viz_img, (x1, y1), (x2, y2), (0, 255, 0), 3)
-        cv2.putText(viz_img, f"ID: {display_id}", (x1, y1 - 10), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-        
-        found_tags.append({"id": display_id, "crop": crop})
-    
-    # 5. Display Results
-    st.subheader("Detection Result")
-    st.image(viz_img)
-    
-    if found_tags:
-        st.subheader("Individual Tag Details")
-        cols = st.columns(len(found_tags))
-        for idx, tag in enumerate(found_tags):
-            with cols[idx]:
-                st.image(tag['crop'], caption=f"Tag {idx+1}")
-                st.write(f"**ID:** `{tag['id']}`")
-    else:
-        st.warning("No tags detected.")
+            # 5. OpenCV Visualization - Draw ONLY one box
+            cv2.rectangle(viz_img, (x1, y1), (x2, y2), (0, 255, 0), 3)
+            cv2.putText(viz_img, f"ID: {display_id}", (x1, y1 - 10), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+            
+            # 6. Display Results
+            st.subheader("Detection Result")
+            st.image(viz_img)
+            
+            st.subheader("Tag Details")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.image(crop, caption="Detected Tag")
+            
+            with col2:
+                st.metric("Tag ID", display_id)
+                st.info(f"(Largest of {len(detections)} detection(s) found)")
