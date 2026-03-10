@@ -42,6 +42,7 @@ def process_tag_ocr(crop):
 
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
     enhanced = clahe.apply(gray)
+    enhanced = cv2.resize(enhanced, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
 
     result, _ = recognizer(enhanced)
 
@@ -49,29 +50,33 @@ def process_tag_ocr(crop):
         return None
 
     h = enhanced.shape[0]
+
     candidates = []
 
     for line in result:
         box, text, conf = line
 
         y_coords = [p[1] for p in box]
+        x_coords = [p[0] for p in box]
+
         y_center = sum(y_coords) / 4
+        x_center = sum(x_coords) / 4
 
-        # ONLY bottom 40% of tag
-        if y_center > h * 0.6:
-
-            cleaned = clean_and_format(text)
-
-            if len(cleaned) >= 3:
-                candidates.append(cleaned)
+        # only keep bottom 40% of tag
+        if y_center > h * 0.55:
+            candidates.append((x_center, text))
 
     if not candidates:
         return None
 
-    # choose longest numeric sequence
-    best = max(candidates, key=len)
+    # sort left → right
+    candidates = sorted(candidates, key=lambda x: x[0])
 
-    return best
+    merged = "".join([t[1] for t in candidates])
+
+    cleaned = clean_and_format(merged)
+
+    return cleaned if len(cleaned) >= 4 else None
 
 # --- Main UI ---
 st.title("Cattle Ear Tag Detector & OCR")
