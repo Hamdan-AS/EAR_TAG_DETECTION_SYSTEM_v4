@@ -10,7 +10,7 @@ import os
 # --- Configuration ---
 st.set_page_config(page_title="Cattle Eartag detector", layout="wide")
 
-# Mapping common OCR errors for cattle tags (Syntax fixed)
+# FIXED: Corrected syntax error by adding values for "(" and ")" 
 MISHAP_MAP = {
     "|": "1", "I": "1", "l": "1", "[": "1", "]": "1", "(": "1", ")": "1",
     "O": "0", "o": "0", "S": "5", "s": "5", "B": "8", "G": "6"
@@ -37,96 +37,102 @@ def clean_and_format(raw_text):
 
 def process_tag_ocr(crop):
     """
-    Finds all text in the bottom half, sorts it from left to right, 
-    and combines it to prevent fragmented numbers from being lost.
+    Finds text in the bottom half of the crop and selects 
+    the largest block by pixel area to ensure we get the main ID.
     """
+    # 1. Image Pre-processing for better contrast
     bgr_crop = cv2.cvtColor(crop, cv2.COLOR_RGB2BGR)
     gray = cv2.cvtColor(bgr_crop, cv2.COLOR_BGR2GRAY)
-    
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     enhanced = clahe.apply(gray)
     
+    # 2. Run OCR
     result, _ = recognizer(enhanced)
     if not result:
         return None
 
     crop_h = enhanced.shape[0]
-    bottom_text_blocks = []
+    largest_text = ""
+    max_area = 0
 
+    # 3. Logic: Find the Largest Block in the Bottom 60%
     for line in result:
         box, text, conf = line
         
-        # Get coordinates to find the center of the text box
+        # Calculate vertical center and pixel area
         y_coords = [p[1] for p in box]
         x_coords = [p[0] for p in box]
+        
         y_center = sum(y_coords) / 4
-        x_center = sum(x_coords) / 4
+        area = (max(x_coords) - min(x_coords)) * (max(y_coords) - min(y_coords))
 
-        # 1. Filter: Only keep text in the bottom 60% of the tag
+        # Only consider text in the bottom 60% of the tag (ignores top dates/batch numbers)
         if y_center > (crop_h * 0.4):
-            # Store the x_center along with the text so we can sort it later
-            bottom_text_blocks.append((x_center, text))
+            if area > max_area:
+                max_area = area
+                largest_text = text
 
-    # 2. Sort the detected blocks from left to right based on their x_center
-    bottom_text_blocks.sort(key=lambda item: item[0])
-    
-    # 3. Combine the sorted text 
-    merged_text = "".join([item[1] for item in bottom_text_blocks])
-    
-    return clean_and_format(merged_text) if merged_text else None
+    return clean_and_format(largest_text) if largest_text else None
 
 # --- Main UI ---
 st.title("Cattle Ear Tag Detector & OCR")
+st.markdown("Extracting only the **Large Bottom ID** from all detected tags.")
 
 uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
+    # 1. Load Image
     image = Image.open(uploaded_file).convert("RGB")
     img_array = np.array(image)
-    viz_img = img_array.copy() 
+    h, w, _ = img_array.shape
+    viz_img = img_array.copy()
     
+    # 2. Run YOLO Detection
     results = detector(img_array, conf=0.4)
     detections = results[0].boxes.xyxy.cpu().numpy()
     
     found_tags = []
     
+    # 3. Process each detection
     for i, box in enumerate(detections):
         x1, y1, x2, y2 = map(int, box)
         
-        # Add a small 10% padding to the bounding box to prevent cutting off edge numbers
-        pad_x = int((x2 - x1) * 0.10)
-        pad_y = int((y2 - y1) * 0.10)
+        # --- BEST BOUNDING BOX OPTION: 15% Expansion ---
+        # We expand the box slightly to ensure characters on the edge (like '1') aren't cut off
+        bw, bh = (x2 - x1), (y2 - y1)
+        pad_w, pad_h = int(bw * 0.15), int(bh * 0.15)
         
-        x1_p = max(0, x1 - pad_x)
-        y1_p = max(0, y1 - pad_y)
-        x2_p = min(img_array.shape[1], x2 + pad_x)
-        y2_p = min(img_array.shape[0], y2 + pad_y)
+        x1_pad = max(0, x1 - pad_w)
+        y1_pad = max(0, y1 - pad_h)
+        x2_pad = min(w, x2 + pad_w)
+        y2_pad = min(h, y2 + pad_h)
         
-        crop = img_array[y1_p:y2_p, x1_p:x2_p]
+        crop = img_array[y1_pad:y2_pad, x1_pad:x2_pad]
         
         if crop.size == 0:
             continue
             
+        # Run OCR on the expanded crop
         tag_id = process_tag_ocr(crop)
         display_id = tag_id if tag_id else "???"
         
+        # 4. OpenCV Visualization
         cv2.rectangle(viz_img, (x1, y1), (x2, y2), (0, 255, 0), 3)
-        label = f"ID: {display_id}"
-        cv2.putText(viz_img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+        cv2.putText(viz_img, f"ID: {display_id}", (x1, y1 - 10), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
         
         found_tags.append({"id": display_id, "crop": crop})
     
+    # 5. Display Results
     st.subheader("Detection Result")
-    st.image(viz_img, caption="Processed Image with OpenCV Overlays")
+    st.image(viz_img)
     
     if found_tags:
         st.subheader("Individual Tag Details")
-        cols = st.columns(min(len(found_tags), 4)) # Adjusted to wrap nicely
+        cols = st.columns(len(found_tags))
         for idx, tag in enumerate(found_tags):
-            with cols[idx % 4]:
+            with cols[idx]:
                 st.image(tag['crop'], caption=f"Tag {idx+1}")
-                st.write(f"**Detected ID:** `{tag['id']}`")
+                st.write(f"**ID:** `{tag['id']}`")
     else:
         st.warning("No tags detected.")
-else:
-    st.info("Please upload an image of cattle to begin detection.")
