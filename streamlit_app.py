@@ -38,30 +38,23 @@ def clean_and_format(raw_text):
 
 def process_tag_ocr(crop):
     """
-    Finds text in the bottom half, adds padding for better edge recognition,
-    and selects the largest block by pixel area.
+    Finds text in the bottom half of the crop and selects 
+    the largest block by pixel area.
     """
-    # 1. Add Padding (OpenCV) 
-    # This ensures characters near the edge (like that '1') aren't cut off
-    padding = 10
-    crop = cv2.copyMakeBorder(crop, padding, padding, padding, padding, 
-                              cv2.BORDER_CONSTANT, value=[255, 255, 255])
-
-    # 2. Pre-processing for better contrast
+    # Convert RGB to BGR for OpenCV processing
     bgr_crop = cv2.cvtColor(crop, cv2.COLOR_RGB2BGR)
     gray = cv2.cvtColor(bgr_crop, cv2.COLOR_BGR2GRAY)
     
-    # Use Adaptive Thresholding to make the text solid black on white
-    # This helps when the tag is dirty or in shadow
-    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                                   cv2.THRESH_BINARY, 11, 2)
+    # Enhance contrast
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
     
-    # 3. Run OCR
-    result, _ = recognizer(thresh)
+    # Run OCR
+    result, _ = recognizer(enhanced)
     if not result:
         return None
 
-    crop_h, _ = thresh.shape[:2]
+    crop_h, crop_w = enhanced.shape[:2]
     largest_text = ""
     max_area = 0
 
@@ -77,7 +70,7 @@ def process_tag_ocr(crop):
         height = max(y_coords) - min(y_coords)
         area = width * height
 
-        # Filter: Only bottom half + Largest block
+        # HEURISTIC: Focus on bottom 60% and pick the largest text block
         if y_center > (crop_h * 0.4):
             if area > max_area:
                 max_area = area
