@@ -1,1 +1,132 @@
-import streamlit as st import cv2 import numpy as np from PIL import Image from ultralytics import YOLO from rapidocr_onnxruntime import RapidOCR import re import os # --- Configuration --- st.set_page_config(page_title="Cattle Eartag detector", layout="wide") # Mapping common OCR errors for cattle tags (Syntax fixed) MISHAP_MAP = { "|": "1", "I": "1", "l": "1", "[": "1", "]": "1", "(": "1", ")": "1", "O": "0", "o": "0", "S": "5", "s": "5", "B": "8", "G": "6" } @st.cache_resource def get_models(): """Load and cache models.""" base_path = os.path.dirname(__file__) model_path = os.path.join(base_path, 'cow_eartag_yolov8n_100ep_clean_best.pt') if not os.path.exists(model_path): st.error(f"Model file '{model_path}' not found.") st.stop() return YOLO(model_path), RapidOCR() detector, recognizer = get_models() def clean_and_format(raw_text): """Applies mishap mapping and keeps only digits.""" text = raw_text.strip() for char, replacement in MISHAP_MAP.items(): text = text.replace(char, replacement) return re.sub(r'\D', '', text) def process_tag_ocr(crop): """ Finds all text in the bottom half, sorts it from left to right, and combines it to prevent fragmented numbers from being lost. """ bgr_crop = cv2.cvtColor(crop, cv2.COLOR_RGB2BGR) gray = cv2.cvtColor(bgr_crop, cv2.COLOR_BGR2GRAY) clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)) enhanced = clahe.apply(gray) result, _ = recognizer(enhanced) if not result: return None crop_h = enhanced.shape[0] bottom_text_blocks = [] for line in result: box, text, conf = line # Get coordinates to find the center of the text box y_coords = [p[1] for p in box] x_coords = [p[0] for p in box] y_center = sum(y_coords) / 4 x_center = sum(x_coords) / 4 # 1. Filter: Only keep text in the bottom 60% of the tag if y_center > (crop_h * 0.4): # Store the x_center along with the text so we can sort it later bottom_text_blocks.append((x_center, text)) # 2. Sort the detected blocks from left to right based on their x_center bottom_text_blocks.sort(key=lambda item: item[0]) # 3. Combine the sorted text merged_text = "".join([item[1] for item in bottom_text_blocks]) return clean_and_format(merged_text) if merged_text else None # --- Main UI --- st.title("Cattle Ear Tag Detector & OCR") uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"]) if uploaded_file: image = Image.open(uploaded_file).convert("RGB") img_array = np.array(image) viz_img = img_array.copy() results = detector(img_array, conf=0.4) detections = results[0].boxes.xyxy.cpu().numpy() found_tags = [] for i, box in enumerate(detections): x1, y1, x2, y2 = map(int, box) # Add a small 10% padding to the bounding box to prevent cutting off edge numbers pad_x = int((x2 - x1) * 0.10) pad_y = int((y2 - y1) * 0.10) x1_p = max(0, x1 - pad_x) y1_p = max(0, y1 - pad_y) x2_p = min(img_array.shape[1], x2 + pad_x) y2_p = min(img_array.shape[0], y2 + pad_y) crop = img_array[y1_p:y2_p, x1_p:x2_p] if crop.size == 0: continue tag_id = process_tag_ocr(crop) display_id = tag_id if tag_id else "???" cv2.rectangle(viz_img, (x1, y1), (x2, y2), (0, 255, 0), 3) label = f"ID: {display_id}" cv2.putText(viz_img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2) found_tags.append({"id": display_id, "crop": crop}) st.subheader("Detection Result") st.image(viz_img, caption="Processed Image with OpenCV Overlays") if found_tags: st.subheader("Individual Tag Details") cols = st.columns(min(len(found_tags), 4)) # Adjusted to wrap nicely for idx, tag in enumerate(found_tags): with cols[idx % 4]: st.image(tag['crop'], caption=f"Tag {idx+1}") st.write(f"**Detected ID:** `{tag['id']}`") else: st.warning("No tags detected.") else: st.info("Please upload an image of cattle to begin detection.")
+import streamlit as st
+import cv2
+import numpy as np
+from PIL import Image
+from ultralytics import YOLO
+from rapidocr_onnxruntime import RapidOCR
+import re
+import os
+
+# --- Configuration ---
+st.set_page_config(page_title="Cattle Eartag detector", layout="wide")
+
+# Mapping common OCR errors for cattle tags (Syntax fixed)
+MISHAP_MAP = {
+    "|": "1", "I": "1", "l": "1", "[": "1", "]": "1", "(": "1", ")": "1",
+    "O": "0", "o": "0", "S": "5", "s": "5", "B": "8", "G": "6"
+}
+
+@st.cache_resource
+def get_models():
+    """Load and cache models."""
+    base_path = os.path.dirname(__file__)
+    model_path = os.path.join(base_path, 'cow_eartag_yolov8n_100ep_clean_best.pt')
+    if not os.path.exists(model_path):
+        st.error(f"Model file '{model_path}' not found.")
+        st.stop()
+    return YOLO(model_path), RapidOCR()
+
+detector, recognizer = get_models()
+
+def clean_and_format(raw_text):
+    """Applies mishap mapping and keeps only digits."""
+    text = raw_text.strip()
+    for char, replacement in MISHAP_MAP.items():
+        text = text.replace(char, replacement)
+    return re.sub(r'\D', '', text)
+
+def process_tag_ocr(crop):
+    """
+    Finds all text in the bottom half, sorts it from left to right, 
+    and combines it to prevent fragmented numbers from being lost.
+    """
+    bgr_crop = cv2.cvtColor(crop, cv2.COLOR_RGB2BGR)
+    gray = cv2.cvtColor(bgr_crop, cv2.COLOR_BGR2GRAY)
+    
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
+    
+    result, _ = recognizer(enhanced)
+    if not result:
+        return None
+
+    crop_h = enhanced.shape[0]
+    bottom_text_blocks = []
+
+    for line in result:
+        box, text, conf = line
+        
+        # Get coordinates to find the center of the text box
+        y_coords = [p[1] for p in box]
+        x_coords = [p[0] for p in box]
+        y_center = sum(y_coords) / 4
+        x_center = sum(x_coords) / 4
+
+        # 1. Filter: Only keep text in the bottom 60% of the tag
+        if y_center > (crop_h * 0.4):
+            # Store the x_center along with the text so we can sort it later
+            bottom_text_blocks.append((x_center, text))
+
+    # 2. Sort the detected blocks from left to right based on their x_center
+    bottom_text_blocks.sort(key=lambda item: item[0])
+    
+    # 3. Combine the sorted text 
+    merged_text = "".join([item[1] for item in bottom_text_blocks])
+    
+    return clean_and_format(merged_text) if merged_text else None
+
+# --- Main UI ---
+st.title("Cattle Ear Tag Detector & OCR")
+
+uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
+
+if uploaded_file:
+    image = Image.open(uploaded_file).convert("RGB")
+    img_array = np.array(image)
+    viz_img = img_array.copy() 
+    
+    results = detector(img_array, conf=0.4)
+    detections = results[0].boxes.xyxy.cpu().numpy()
+    
+    found_tags = []
+    
+    for i, box in enumerate(detections):
+        x1, y1, x2, y2 = map(int, box)
+        
+        # Add a small 10% padding to the bounding box to prevent cutting off edge numbers
+        pad_x = int((x2 - x1) * 0.10)
+        pad_y = int((y2 - y1) * 0.10)
+        
+        x1_p = max(0, x1 - pad_x)
+        y1_p = max(0, y1 - pad_y)
+        x2_p = min(img_array.shape[1], x2 + pad_x)
+        y2_p = min(img_array.shape[0], y2 + pad_y)
+        
+        crop = img_array[y1_p:y2_p, x1_p:x2_p]
+        
+        if crop.size == 0:
+            continue
+            
+        tag_id = process_tag_ocr(crop)
+        display_id = tag_id if tag_id else "???"
+        
+        cv2.rectangle(viz_img, (x1, y1), (x2, y2), (0, 255, 0), 3)
+        label = f"ID: {display_id}"
+        cv2.putText(viz_img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+        
+        found_tags.append({"id": display_id, "crop": crop})
+    
+    st.subheader("Detection Result")
+    st.image(viz_img, caption="Processed Image with OpenCV Overlays")
+    
+    if found_tags:
+        st.subheader("Individual Tag Details")
+        cols = st.columns(min(len(found_tags), 4)) # Adjusted to wrap nicely
+        for idx, tag in enumerate(found_tags):
+            with cols[idx % 4]:
+                st.image(tag['crop'], caption=f"Tag {idx+1}")
+                st.write(f"**Detected ID:** `{tag['id']}`")
+    else:
+        st.warning("No tags detected.")
+else:
+    st.info("Please upload an image of cattle to begin detection.")
