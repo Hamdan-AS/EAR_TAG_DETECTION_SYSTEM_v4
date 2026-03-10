@@ -1,12 +1,53 @@
-An automated computer vision solution for livestock management. This system leverages YOLOv8 for precise object detection and RapidOCR for alphanumeric extraction from cow ear tags.📋 Table of ContentsOverviewKey FeaturesProject StructureInstallationModel DetailsDeploymentContributing🔍 OverviewThe Cow Ear Tag Detection System v4 eliminates manual data entry and expensive scanning hardware. By simply uploading a photo (including mobile formats), users can:Localize: Detect ear tags using a fine-tuned YOLOv8n model.Process: Automatically crop and preprocess the detected region.Extract: Convert the visual tag into digital text using RapidOCR (ONNX).✨ Key FeaturesMulti-Format Support: Native support for JPG, PNG, and HEIC/HEIF (iPhone) images.Edge-Ready Inference: Uses YOLOv8n (Nano) for high-speed performance even on modest hardware.Robust OCR: Powered by rapidocr-onnxruntime for reliable text extraction without complex heavy dependencies.Cloud-Native: Optimized for Streamlit Cloud with pre-configured packages.txt for system-level dependencies.🛠️ Installation1. Clone the RepositoryBashgit clone https://github.com/Hamdan-AS/EAR_TAG_DETECTION_SYSTEM_v4.git
+# Cow Ear Tag Detection System v4
+
+An automated computer vision solution for livestock management. This system leverages **YOLOv8** for precise object detection and **RapidOCR** for alphanumeric extraction from cow ear tags.
+
+---
+
+## 📋 Table of Contents
+
+- [Overview](#-overview)
+- [Key Features](#-key-features)
+- [Project Structure](#-project-structure)
+- [Installation](#️-installation)
+- [Model Details](#-model-details)
+- [Deployment](#-deployment-on-streamlit-cloud)
+- [Contributing](#-contributing)
+
+---
+
+## 🔍 Overview
+
+The **Cow Ear Tag Detection System v4** eliminates manual data entry and expensive scanning hardware.
+
+By simply uploading a photo (including mobile formats), users can:
+
+- **Localize**: Detect ear tags using a fine-tuned **YOLOv8n** model  
+- **Process**: Automatically crop and preprocess the detected region  
+- **Extract**: Convert the visual tag into digital text using **RapidOCR (ONNX)**  
+
+---
+
+## ✨ Key Features
+
+- **Multi-Format Support**  
+  Native support for **JPG, PNG, and HEIC/HEIF (iPhone)** images.
+
+- **Edge-Ready Inference**  
+  Uses **YOLOv8n (Nano)** for high-speed performance even on modest hardware.
+
+- **Robust OCR**  
+  Powered by `rapidocr-onnxruntime` for reliable text extraction without heavy dependencies.
+
+- **Cloud-Native**  
+  Optimized for **Streamlit Cloud** with pre-configured `packages.txt` for system-level dependencies.
+
+---
+
+## 🛠️ Installation
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/Hamdan-AS/EAR_TAG_DETECTION_SYSTEM_v4.git
 cd EAR_TAG_DETECTION_SYSTEM_v4
-2. System DependenciesFor OpenCV to function correctly in Linux/Headless environments, install the following:Bashsudo apt-get update && sudo apt-get install -y libgl1 libglib2.0-dev
-3. Python EnvironmentIt is recommended to use a virtual environment:Bashpip install -r requirements.txt
-4. Launch the AppBashstreamlit run streamlit_app.py
-📊 Model DetailsPropertyDetailArchitectureYOLOv8n (Nano)FrameworkUltralyticsTraining Epochs100DatasetCustom "Clean" Ear Tag DatasetWeightscow_eartag_yolov8n_100ep_clean_best.ptNote: The "Clean" designation indicates a curated dataset with corrected bounding box annotations and filtered low-lighting/blurry images to improve inference reliability.📂 Project StructurePlaintextEAR_TAG_DETECTION_SYSTEM_v4/
-├── streamlit_app.py          # Main Streamlit UI & Logic
-├── cow_eartag_yolov8n_...pt  # Fine-tuned YOLOv8n weights
-├── requirements.txt          # Python library dependencies
-├── packages.txt             # Debian system dependencies
-└── README.md                 # Project documentation
-🚀 Deployment on Streamlit CloudThis repository is configured for immediate deployment:Push your code to GitHub.Connect your repository to share.streamlit.io.Critical: Ensure the model weights file is included. If the file exceeds 25MB, consider using Git LFS or hosting the weights on a cloud drive and downloading them via script on first run.🤝 ContributingContributions drive the open-source community!Fork the Project.Create your Feature Branch (git checkout -b feature/AmazingFeature).Commit your Changes (git commit -m 'Add some AmazingFeature').Push to the Branch (git push origin feature/AmazingFeature).Open a Pull Request.
