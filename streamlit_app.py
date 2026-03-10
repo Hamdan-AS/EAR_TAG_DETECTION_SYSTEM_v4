@@ -75,8 +75,7 @@ def process_tag_ocr(crop):
     return clean_and_format(largest_text) if largest_text else None
 
 # --- Main UI ---
-st.title("Cattle Ear Tag Detector & OCR")
-st.markdown("Detecting and extracting the **single best tag ID**.")
+st.title("🐄 Cattle Ear Tag Detector & OCR")
 
 uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
 
